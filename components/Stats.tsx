@@ -1,6 +1,6 @@
 import React from "react";
 import { View, Text } from "react-native";
-import { statsStyles as styles } from "../styles/FuturisticTheme";
+import { statsStyles as styles } from "../assets/style/FuturisticTheme";
 import { StatsProps } from "../types/types";
 
 const Stats: React.FC<StatsProps> = ({ totalClicks }) => {

@@ -1,19 +1,8 @@
 import React, { useCallback } from "react";
 import { View, Text, TouchableOpacity, SafeAreaView } from "react-native";
-import Animated, {
-  useSharedValue,
-  useAnimatedStyle,
-  withSpring,
-  withTiming,
-  withSequence,
-  Easing,
-} from "react-native-reanimated";
-import * as Haptics from "expo-haptics";
-import AsyncStorage from "@react-native-async-storage/async-storage";
+import Animated,from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
-import { doc, updateDoc, setDoc, increment } from "firebase/firestore";
-import { db } from "../database";
-import { gameScreenStyles as styles, colors } from "../styles/FuturisticTheme";
+import { gameScreenStyles as styles, colors } from "../assets/style/FuturisticTheme";
 import { GameScreenProps, Team } from "../types/types";
 
 const STORAGE_KEY = "team_clicker_preference";

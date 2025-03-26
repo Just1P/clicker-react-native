@@ -1,25 +1,14 @@
 import React, { useEffect, useState } from "react";
-import {
-  View,
-  Text,
-  ActivityIndicator,
-  SafeAreaView,
-  Platform,
-  StatusBar,
-} from "react-native";
+import { View, Text, ActivityIndicator, SafeAreaView } from "react-native";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
-import AsyncStorage from "@react-native-async-storage/async-storage";
-import { collection, onSnapshot } from "firebase/firestore";
-import { db } from "../../database";
-import { Ionicons } from "@expo/vector-icons"; // Ajoutez les icônes
+import { Ionicons } from "@expo/vector-icons";
 import TeamSelector from "../../components/TeamSelector";
 import GameScreen from "../../components/GameScreen";
 import ShopScreen from "../../components/ShopScreen";
 import ProgressBar from "../../components/ProgressBar";
 import Stats from "../../components/Stats";
-import { Team, TeamStats } from "../../types/types";
-import { appStyles, colors } from "../../styles/FuturisticTheme"; // Importez le thème
+import { appStyles, colors } from "../../assets/style/FuturisticTheme";
 
 const STORAGE_KEY = "team_clicker_preference";
 const Tab = createBottomTabNavigator();

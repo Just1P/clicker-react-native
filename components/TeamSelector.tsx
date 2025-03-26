@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, Image } from "react-native";
 import * as Haptics from "expo-haptics";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { Ionicons } from "@expo/vector-icons";
-import { teamSelectorStyles as styles } from "../styles/FuturisticTheme";
+import { teamSelectorStyles as styles } from "../assets/style/FuturisticTheme";
 
 const STORAGE_KEY = "team_clicker_preference";
 
