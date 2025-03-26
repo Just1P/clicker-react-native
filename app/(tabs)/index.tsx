@@ -1,74 +1,138 @@
-import { Image, StyleSheet, Platform } from 'react-native';
+import React, { useEffect, useState } from "react";
+import {
+  View,
+  Text,
+  ActivityIndicator,
+  SafeAreaView,
+  Platform,
+  StatusBar,
+} from "react-native";
+import { NavigationContainer } from "@react-navigation/native";
+import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
+import AsyncStorage from "@react-native-async-storage/async-storage";
+import { collection, onSnapshot } from "firebase/firestore";
+import { db } from "../../database";
+import { Ionicons } from "@expo/vector-icons"; // Ajoutez les icônes
+import TeamSelector from "../../components/TeamSelector";
+import GameScreen from "../../components/GameScreen";
+import ShopScreen from "../../components/ShopScreen";
+import ProgressBar from "../../components/ProgressBar";
+import Stats from "../../components/Stats";
+import { Team, TeamStats } from "../../types/types";
+import { appStyles, colors } from "../../styles/FuturisticTheme"; // Importez le thème
 
-import { HelloWave } from '@/components/HelloWave';
-import ParallaxScrollView from '@/components/ParallaxScrollView';
-import { ThemedText } from '@/components/ThemedText';
-import { ThemedView } from '@/components/ThemedView';
+const STORAGE_KEY = "team_clicker_preference";
+const Tab = createBottomTabNavigator();
 
-export default function HomeScreen() {
+const App = () => {
+  // État existant...
+
+  if (loading) {
+    return (
+      <View style={appStyles.loadingContainer}>
+        <ActivityIndicator size="large" color={colors.accent} />
+        <Text style={appStyles.loadingText}>Chargement...</Text>
+      </View>
+    );
+  }
+
   return (
-    <ParallaxScrollView
-      headerBackgroundColor={{ light: '#A1CEDC', dark: '#1D3D47' }}
-      headerImage={
-        <Image
-          source={require('@/assets/images/partial-react-logo.png')}
-          style={styles.reactLogo}
-        />
-      }>
-      <ThemedView style={styles.titleContainer}>
-        <ThemedText type="title">Welcome!</ThemedText>
-        <HelloWave />
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 1: Try it</ThemedText>
-        <ThemedText>
-          Edit <ThemedText type="defaultSemiBold">app/(tabs)/index.tsx</ThemedText> to see changes.
-          Press{' '}
-          <ThemedText type="defaultSemiBold">
-            {Platform.select({
-              ios: 'cmd + d',
-              android: 'cmd + m',
-              web: 'F12'
-            })}
-          </ThemedText>{' '}
-          to open developer tools.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 2: Explore</ThemedText>
-        <ThemedText>
-          Tap the Explore tab to learn more about what's included in this starter app.
-        </ThemedText>
-      </ThemedView>
-      <ThemedView style={styles.stepContainer}>
-        <ThemedText type="subtitle">Step 3: Get a fresh start</ThemedText>
-        <ThemedText>
-          When you're ready, run{' '}
-          <ThemedText type="defaultSemiBold">npm run reset-project</ThemedText> to get a fresh{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> directory. This will move the current{' '}
-          <ThemedText type="defaultSemiBold">app</ThemedText> to{' '}
-          <ThemedText type="defaultSemiBold">app-example</ThemedText>.
-        </ThemedText>
-      </ThemedView>
-    </ParallaxScrollView>
+    <NavigationContainer
+      theme={{
+        dark: true,
+        colors: {
+          primary: colors.accent,
+          background: colors.background,
+          card: colors.backgroundAccent,
+          text: colors.textPrimary,
+          border: "rgba(255, 255, 255, 0.1)",
+          notification: colors.redPrimary,
+        },
+      }}
+    >
+      <Tab.Navigator
+        screenOptions={({ route }) => ({
+          tabBarStyle: appStyles.navBar,
+          tabBarLabelStyle: appStyles.navBarLabel,
+          tabBarActiveTintColor: colors.accent,
+          tabBarInactiveTintColor: colors.textMuted,
+          headerStyle: {
+            backgroundColor: colors.backgroundAccent,
+            borderBottomWidth: 1,
+            borderBottomColor: "rgba(255, 255, 255, 0.1)",
+            elevation: 0,
+            shadowOpacity: 0,
+          },
+          headerTitleStyle: {
+            color: colors.textPrimary,
+            fontWeight: "bold",
+          },
+          tabBarIcon: ({ focused, color, size }) => {
+            let iconName;
+            if (route.name === "Game") {
+              iconName = focused
+                ? "game-controller"
+                : "game-controller-outline";
+            } else if (route.name === "Shop") {
+              iconName = focused ? "cart" : "cart-outline";
+            }
+            return (
+              <Ionicons
+                name={iconName}
+                size={size}
+                color={color}
+                style={appStyles.navBarIcon}
+              />
+            );
+          },
+        })}
+      >
+        <Tab.Screen name="Game" options={{ title: "Clicker" }}>
+          {() => (
+            <SafeAreaView style={appStyles.safeArea}>
+              <View style={appStyles.container}>
+                <Stats totalClicks={totalClicks} />
+                <ProgressBar
+                  redPercentage={
+                    totalClicks.Rouge + totalClicks.Bleu > 0
+                      ? (totalClicks.Rouge /
+                          (totalClicks.Rouge + totalClicks.Bleu)) *
+                        100
+                      : 50
+                  }
+                  bluePercentage={
+                    totalClicks.Rouge + totalClicks.Bleu > 0
+                      ? (totalClicks.Bleu /
+                          (totalClicks.Rouge + totalClicks.Bleu)) *
+                        100
+                      : 50
+                  }
+                />
+                <View style={appStyles.mainContent}>
+                  {!team ? (
+                    <TeamSelector chooseTeam={setTeam} />
+                  ) : (
+                    <GameScreen
+                      team={team}
+                      totalClicks={totalClicks}
+                      clickCount={clickCount}
+                      setClickCount={setClickCount}
+                      resetTeam={resetTeam}
+                    />
+                  )}
+                </View>
+              </View>
+            </SafeAreaView>
+          )}
+        </Tab.Screen>
+        <Tab.Screen name="Shop" options={{ title: "Boutique" }}>
+          {() => (
+            <ShopScreen clickCount={clickCount} setClickCount={setClickCount} />
+          )}
+        </Tab.Screen>
+      </Tab.Navigator>
+    </NavigationContainer>
   );
-}
+};
 
-const styles = StyleSheet.create({
-  titleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-  },
-  stepContainer: {
-    gap: 8,
-    marginBottom: 8,
-  },
-  reactLogo: {
-    height: 178,
-    width: 290,
-    bottom: 0,
-    left: 0,
-    position: 'absolute',
-  },
-});
+export default App;
