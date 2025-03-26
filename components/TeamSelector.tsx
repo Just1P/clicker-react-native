@@ -120,7 +120,6 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
         {
           name: team,
           members: increment(1),
-          // On pourrait ajouter d'autres données si nécessaire
         },
         { merge: true }
       );
@@ -133,9 +132,9 @@ const TeamSelector: React.FC<TeamSelectorProps> = ({
           name: playerName,
           team: team,
           joinedAt: new Date().toISOString(),
-          clicks: 0,
+          clicks: 0, // Initialiser à 0 lors de la création
         },
-        { merge: true }
+        { merge: true } // Permet de mettre à jour sans écraser les données existantes
       );
 
       console.log("Données d'équipe mises à jour avec succès dans Firestore");

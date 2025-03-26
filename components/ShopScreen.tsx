@@ -28,6 +28,7 @@ interface Bonus {
   cost: number;
   effect: number;
   description: string;
+  type: "autoClicker" | "clickMultiplier" | "teamBoost" | "specialAbility";
 }
 
 interface ShopScreenProps {
@@ -40,26 +41,84 @@ const ShopScreen: React.FC<ShopScreenProps> = ({
   setClickCount,
 }) => {
   const [bonuses, setBonuses] = useState<Bonus[]>([
+    // Auto-Clickers
     {
       id: 1,
-      name: "Auto-Clicker Basique",
+      name: "Drone de Clic Basique",
       cost: 50,
       effect: 1,
-      description: "Ajoute 1 clic automatique par seconde pour votre équipe",
+      description: "Un petit drone qui clique automatiquement",
+      type: "autoClicker",
     },
     {
       id: 2,
-      name: "Auto-Clicker Avancé",
+      name: "Essaim de Micro-Robots",
       cost: 200,
       effect: 5,
-      description: "Ajoute 5 clics automatiques par seconde pour votre équipe",
+      description: "Un essaim de micro-robots qui cliquent en coordination",
+      type: "autoClicker",
     },
     {
       id: 3,
-      name: "Hyper Clickeur",
+      name: "IA de Clic Avancée",
       cost: 500,
       effect: 15,
-      description: "Ajoute 15 clics automatiques par seconde pour votre équipe",
+      description: "Une intelligence artificielle optimisée pour le clic",
+      type: "autoClicker",
+    },
+
+    // Multiplicateurs de Clic
+    {
+      id: 4,
+      name: "Amplificateur de Clic",
+      cost: 100,
+      effect: 2,
+      description: "Chaque clic manuel génère le double de points",
+      type: "clickMultiplier",
+    },
+    {
+      id: 5,
+      name: "Booster Quantique",
+      cost: 300,
+      effect: 5,
+      description: "Multiplie la puissance de chaque clic par 5",
+      type: "clickMultiplier",
+    },
+
+    // Boosters d'Équipe
+    {
+      id: 6,
+      name: "Motivation d'Équipe",
+      cost: 250,
+      effect: 10,
+      description: "Boost temporaire de la vitesse de clic de toute l'équipe",
+      type: "teamBoost",
+    },
+    {
+      id: 7,
+      name: "Bouclier de Synchronisation",
+      cost: 400,
+      effect: 20,
+      description: "Protège les clics de l'équipe contre les ralentissements",
+      type: "teamBoost",
+    },
+
+    // Capacités Spéciales
+    {
+      id: 8,
+      name: "Rayon de Conversion",
+      cost: 600,
+      effect: 30,
+      description: "Convertit un petit pourcentage des clics adverses",
+      type: "specialAbility",
+    },
+    {
+      id: 9,
+      name: "Lance-Clics Orbital",
+      cost: 1000,
+      effect: 50,
+      description: "Un bombardement de clics depuis l'orbite",
+      type: "specialAbility",
     },
   ]);
 
@@ -72,6 +131,19 @@ const ShopScreen: React.FC<ShopScreenProps> = ({
   // Notification pour indiquer l'activation immédiate des améliorations
   const [showActivationNotice, setShowActivationNotice] =
     useState<boolean>(false);
+
+  const calculateTotalAutoClicks = useCallback(() => {
+    return purchasedBonuses
+      .filter((bonus) => bonus.type === "autoClicker")
+      .reduce((total, bonus) => total + bonus.effect, 0);
+  }, [purchasedBonuses]);
+
+  // Calculer le multiplicateur de clics
+  const calculateClickMultiplier = useCallback(() => {
+    return purchasedBonuses
+      .filter((bonus) => bonus.type === "clickMultiplier")
+      .reduce((total, bonus) => total * bonus.effect, 1);
+  }, [purchasedBonuses]);
 
   // Charger l'équipe actuelle
   useEffect(() => {
@@ -134,10 +206,68 @@ const ShopScreen: React.FC<ShopScreenProps> = ({
     }
   }, []);
 
-  // Calculer l'effet total des auto-clickers
-  const calculateTotalEffect = useCallback(() => {
-    return purchasedBonuses.reduce((total, bonus) => total + bonus.effect, 0);
-  }, [purchasedBonuses]);
+  // Appliquer un booster d'équipe
+  const applyTeamBoost = useCallback(
+    async (bonus: Bonus) => {
+      if (!team) return;
+
+      try {
+        // Mettre à jour Firestore avec un boost temporaire pour l'équipe
+        await updateDoc(doc(db, "teams", team), {
+          temporaryBoost: increment(bonus.effect),
+          boostExpiration: new Date(Date.now() + 60000), // Boost valable 1 minute
+        });
+
+        // Notification du boost
+        Alert.alert(
+          "Boost d'Équipe!",
+          `${bonus.name} active! Votre équipe bénéficie d'un boost temporaire de ${bonus.effect} points.`
+        );
+      } catch (error) {
+        console.error("Erreur lors de l'application du boost d'équipe:", error);
+      }
+    },
+    [team]
+  );
+
+  // Appliquer une capacité spéciale
+  const applySpecialAbility = useCallback(
+    async (bonus: Bonus) => {
+      if (!team) return;
+
+      try {
+        // Selon le type de capacité, différents effets
+        switch (bonus.id) {
+          case 8: // Rayon de Conversion
+            await updateDoc(
+              doc(db, "teams", team === "Rouge" ? "Bleu" : "Rouge"),
+              {
+                clicks: increment(-bonus.effect), // Réduire les clics de l'équipe adverse
+              }
+            );
+            break;
+
+          case 9: // Lance-Clics Orbital
+            await updateDoc(doc(db, "teams", team), {
+              clicks: increment(bonus.effect * 2), // Double effet pour le boost orbital
+            });
+            break;
+        }
+
+        // Notification de la capacité spéciale
+        Alert.alert(
+          "Capacité Spéciale!",
+          `${bonus.name} a été utilisée avec succès !`
+        );
+      } catch (error) {
+        console.error(
+          "Erreur lors de l'application de la capacité spéciale:",
+          error
+        );
+      }
+    },
+    [team]
+  );
 
   // Mettre à jour Firestore avec les auto-clics
   const updateFirestoreWithAutoClicks = useCallback(
@@ -183,8 +313,18 @@ const ShopScreen: React.FC<ShopScreenProps> = ({
       // Sauvegarder les bonus achetés
       savePurchasedBonuses(newPurchasedBonuses);
 
-      // Mettre à jour Firestore avec les effets des auto-clics
-      updateFirestoreWithAutoClicks(bonus);
+      // Traitement spécifique selon le type de bonus
+      switch (bonus.type) {
+        case "autoClicker":
+          updateFirestoreWithAutoClicks(bonus);
+          break;
+        case "teamBoost":
+          applyTeamBoost(bonus);
+          break;
+        case "specialAbility":
+          applySpecialAbility(bonus);
+          break;
+      }
 
       // Afficher une notification
       Alert.alert(
@@ -200,8 +340,20 @@ const ShopScreen: React.FC<ShopScreenProps> = ({
       setClickCount,
       savePurchasedBonuses,
       updateFirestoreWithAutoClicks,
+      applyTeamBoost,
+      applySpecialAbility,
     ]
   );
+
+  // Grouper les bonus par type
+  const groupedBonuses = {
+    "Auto-Clickers": bonuses.filter((b) => b.type === "autoClicker"),
+    "Multiplicateurs de Clic": bonuses.filter(
+      (b) => b.type === "clickMultiplier"
+    ),
+    "Boosters d'Équipe": bonuses.filter((b) => b.type === "teamBoost"),
+    "Capacités Spéciales": bonuses.filter((b) => b.type === "specialAbility"),
+  };
 
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: colors.background }}>
@@ -225,48 +377,80 @@ const ShopScreen: React.FC<ShopScreenProps> = ({
           Clics disponibles: {validClickCount}
         </Text>
 
-        {calculateTotalEffect() > 0 && (
+        {calculateTotalAutoClicks() > 0 && (
           <Text style={[styles.clickCountText, { color: colors.success }]}>
             <Ionicons name="flash" size={20} color={colors.success} />{" "}
-            Auto-clics: +{calculateTotalEffect()} par seconde pour votre équipe
+            Auto-clics: +{calculateTotalAutoClicks()} par seconde pour votre
+            équipe
+          </Text>
+        )}
+
+        {calculateClickMultiplier() > 1 && (
+          <Text style={[styles.clickCountText, { color: colors.warning }]}>
+            <Ionicons name="rocket" size={20} color={colors.warning} />{" "}
+            Multiplicateur de clic: x{calculateClickMultiplier()}
           </Text>
         )}
 
         <View style={styles.bonusesContainer}>
-          <Text style={styles.sectionHeading}>Améliorations disponibles</Text>
+          {Object.entries(groupedBonuses).map(
+            ([categoryName, categoryBonuses]) => (
+              <View key={categoryName}>
+                <Text style={styles.sectionHeading}>{categoryName}</Text>
 
-          {bonuses
-            .filter(
-              (bonus) => !purchasedBonuses.some((pb) => pb.id === bonus.id)
-            )
-            .map((bonus) => (
-              <View key={bonus.id} style={styles.bonusCard}>
-                <View style={styles.bonusInfo}>
-                  <Text style={styles.bonusName}>{bonus.name}</Text>
-                  <Text style={styles.bonusDescription}>
-                    {bonus.description}
-                  </Text>
-                  <Text style={styles.bonusEffect}>
-                    +{bonus.effect} clics/sec pour l'équipe
-                  </Text>
-                  <Text style={styles.bonusCost}>
-                    <Ionicons name="flash" size={16} color={colors.warning} />{" "}
-                    {bonus.cost} clics
-                  </Text>
-                </View>
-                <TouchableOpacity
-                  style={
-                    canPurchase(bonus)
-                      ? styles.buyButton
-                      : styles.unavailableBuyButton
-                  }
-                  onPress={() => purchaseBonus(bonus)}
-                  disabled={!canPurchase(bonus)}
-                >
-                  <Text style={styles.buyButtonText}>ACHETER</Text>
-                </TouchableOpacity>
+                {categoryBonuses
+                  .filter(
+                    (bonus) =>
+                      !purchasedBonuses.some((pb) => pb.id === bonus.id)
+                  )
+                  .map((bonus) => (
+                    <View key={bonus.id} style={styles.bonusCard}>
+                      <View style={styles.bonusInfo}>
+                        <Text style={styles.bonusName}>{bonus.name}</Text>
+                        <Text style={styles.bonusDescription}>
+                          {bonus.description}
+                        </Text>
+                        {bonus.type === "autoClicker" && (
+                          <Text style={styles.bonusEffect}>
+                            +{bonus.effect} clics/sec pour l'équipe
+                          </Text>
+                        )}
+                        {bonus.type === "clickMultiplier" && (
+                          <Text style={styles.bonusEffect}>
+                            Multiplie les clics manuels par {bonus.effect}
+                          </Text>
+                        )}
+                        {(bonus.type === "teamBoost" ||
+                          bonus.type === "specialAbility") && (
+                          <Text style={styles.bonusEffect}>
+                            Effet spécial de {bonus.effect} points
+                          </Text>
+                        )}
+                        <Text style={styles.bonusCost}>
+                          <Ionicons
+                            name="flash"
+                            size={16}
+                            color={colors.warning}
+                          />{" "}
+                          {bonus.cost} clics
+                        </Text>
+                      </View>
+                      <TouchableOpacity
+                        style={
+                          canPurchase(bonus)
+                            ? styles.buyButton
+                            : styles.unavailableBuyButton
+                        }
+                        onPress={() => purchaseBonus(bonus)}
+                        disabled={!canPurchase(bonus)}
+                      >
+                        <Text style={styles.buyButtonText}>ACHETER</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ))}
               </View>
-            ))}
+            )
+          )}
 
           {purchasedBonuses.length > 0 && (
             <View style={styles.ownedBonusesContainer}>
@@ -276,9 +460,16 @@ const ShopScreen: React.FC<ShopScreenProps> = ({
                   <Text style={styles.bonusName}>
                     {bonus.name || `Bonus ${index + 1}`}
                   </Text>
-                  <Text style={styles.bonusEffect}>
-                    +{bonus.effect} clics/sec pour l'équipe
-                  </Text>
+                  {bonus.type === "autoClicker" && (
+                    <Text style={styles.bonusEffect}>
+                      +{bonus.effect} clics/sec pour l'équipe
+                    </Text>
+                  )}
+                  {bonus.type === "clickMultiplier" && (
+                    <Text style={styles.bonusEffect}>
+                      Multiplie les clics manuels par {bonus.effect}
+                    </Text>
+                  )}
                 </View>
               ))}
             </View>

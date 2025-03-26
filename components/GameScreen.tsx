@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { View, Text, TouchableOpacity, Alert } from "react-native";
+import { View, Text, TouchableOpacity, Alert, ScrollView } from "react-native";
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -8,7 +8,17 @@ import Animated, {
   Easing,
 } from "react-native-reanimated";
 import { Ionicons } from "@expo/vector-icons";
-import { doc, updateDoc, increment } from "firebase/firestore";
+import {
+  doc,
+  updateDoc,
+  increment,
+  collection,
+  query,
+  where,
+  onSnapshot,
+  limit,
+  orderBy,
+} from "firebase/firestore";
 import { db } from "../database";
 import {
   gameScreenStyles as styles,
@@ -18,12 +28,9 @@ import { GameScreenProps, Team } from "../types/types";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import * as Haptics from "expo-haptics";
 import { useFocusEffect } from "@react-navigation/native";
+import { STORAGE_KEYS } from "../constants/storageKey";
 
-const STORAGE_KEY = "team_clicker_preference";
-const CLICKS_STORAGE_KEY = "team_clicker_clicks";
 const AUTO_CLICKER_THRESHOLD = 10;
-const AUTO_CLICKER_STORAGE_KEY = "team_clicker_autoclicker";
-const BONUSES_STORAGE_KEY = "team_clicker_bonuses";
 
 interface Bonus {
   id: number;
@@ -31,6 +38,12 @@ interface Bonus {
   cost: number;
   effect: number;
   description: string;
+  type: "autoClicker" | "clickMultiplier" | "teamBoost" | "specialAbility";
+}
+
+interface PlayerActivity {
+  name: string;
+  clicks: number;
 }
 
 const GameScreen: React.FC<GameScreenProps> = ({
@@ -50,6 +63,11 @@ const GameScreen: React.FC<GameScreenProps> = ({
     };
   });
 
+  // États pour les activités des joueurs
+  const [playerActivities, setPlayerActivities] = useState<PlayerActivity[]>(
+    []
+  );
+
   // Vérifier si l'auto-clicker est débloqué
   const [autoClickerEnabled, setAutoClickerEnabled] = useState(false);
 
@@ -68,27 +86,73 @@ const GameScreen: React.FC<GameScreenProps> = ({
   // Référence pour suivre le dernier timestamp de clic
   const lastClickTime = useRef(0);
 
+  const [clickMultiplier, setClickMultiplier] = useState(1);
+
+  // Nouvelle fonction pour suivre l'activité des joueurs en temps réel
+  useEffect(() => {
+    // Vérifier si une équipe est sélectionnée
+    if (!team) return;
+
+    // Créer une requête pour suivre les joueurs de l'équipe, triés par clics récents
+    const playersQuery = query(
+      collection(db, "players"),
+      where("team", "==", team),
+      orderBy("clicks", "desc"),
+      limit(10)
+    );
+
+    // Établir un listener en temps réel
+    const unsubscribe = onSnapshot(
+      playersQuery,
+      (snapshot) => {
+        const activePlayersData: PlayerActivity[] = snapshot.docs.map(
+          (doc) => ({
+            name: doc.id,
+            clicks: doc.data().clicks || 0,
+          })
+        );
+
+        setPlayerActivities(activePlayersData);
+      },
+      (error) => {
+        console.error("Erreur lors du suivi des joueurs:", error);
+      }
+    );
+
+    // Nettoyer le listener à la démontage
+    return () => unsubscribe();
+  }, [team]);
+
   // Fonction pour charger les bonus et recalculer le taux d'auto-clics
   const loadBonusesAndCalculateRate = useCallback(async () => {
     try {
       console.log("Chargement des bonus...");
-      const savedBonuses = await AsyncStorage.getItem(BONUSES_STORAGE_KEY);
+      const savedBonuses = await AsyncStorage.getItem(STORAGE_KEYS.BONUSES);
 
       if (savedBonuses) {
         const parsedBonuses = JSON.parse(savedBonuses);
         setPurchasedBonuses(parsedBonuses);
 
-        // Calculer le taux total des auto-clics à partir des bonus
-        const totalRate = parsedBonuses.reduce(
-          (total, bonus) => total + bonus.effect,
-          0
-        );
-        console.log("Nouveau taux d'auto-clics calculé:", totalRate);
-        setAutoClickRate(totalRate);
+        // Calculer le taux total des auto-clics
+        const totalAutoClicks = parsedBonuses
+          .filter((bonus: Bonus) => bonus.type === "autoClicker")
+          .reduce((total: number, bonus: Bonus) => total + bonus.effect, 0);
+
+        // Calculer le multiplicateur de clics
+        const clickMultiplier = parsedBonuses
+          .filter((bonus: Bonus) => bonus.type === "clickMultiplier")
+          .reduce((total: number, bonus: Bonus) => total * bonus.effect, 1);
+
+        console.log("Nouveau taux d'auto-clics calculé:", totalAutoClicks);
+        console.log("Multiplicateur de clics:", clickMultiplier);
+
+        setAutoClickRate(totalAutoClicks);
+        setClickMultiplier(clickMultiplier);
       } else {
         console.log("Aucun bonus trouvé");
         setPurchasedBonuses([]);
         setAutoClickRate(0);
+        setClickMultiplier(1);
       }
     } catch (error) {
       console.error("Erreur lors du chargement des bonus:", error);
@@ -100,7 +164,9 @@ const GameScreen: React.FC<GameScreenProps> = ({
     const loadAutoClickerState = async () => {
       try {
         // Charger l'état de l'auto-clicker
-        const savedState = await AsyncStorage.getItem(AUTO_CLICKER_STORAGE_KEY);
+        const savedState = await AsyncStorage.getItem(
+          STORAGE_KEYS.AUTO_CLICKER
+        );
         if (savedState === "enabled") {
           setAutoClickerEnabled(true);
         }
@@ -132,13 +198,11 @@ const GameScreen: React.FC<GameScreenProps> = ({
 
   // Vérifier le débloquage de l'auto-clicker
   useEffect(() => {
-    // Activer l'auto-clicker quand le seuil est atteint
     if (clickCount >= AUTO_CLICKER_THRESHOLD && !autoClickerEnabled) {
       setAutoClickerEnabled(true);
 
-      // Enregistrer l'état de l'auto-clicker
       try {
-        AsyncStorage.setItem(AUTO_CLICKER_STORAGE_KEY, "enabled");
+        AsyncStorage.setItem(STORAGE_KEYS.AUTO_CLICKER, "enabled");
       } catch (error) {
         console.error(
           "Erreur lors de l'enregistrement de l'état de l'auto-clicker:",
@@ -146,7 +210,6 @@ const GameScreen: React.FC<GameScreenProps> = ({
         );
       }
 
-      // Afficher l'alerte seulement la première fois
       if (!autoClickerAnnounced.current) {
         Alert.alert(
           "Auto-Clicker Débloqué!",
@@ -159,7 +222,6 @@ const GameScreen: React.FC<GameScreenProps> = ({
 
   // Effet pour l'auto-clicker - UNIQUEMENT pour les clics d'équipe
   useEffect(() => {
-    // Nettoyer tout intervalle existant
     if (autoClickIntervalRef.current) {
       clearInterval(autoClickIntervalRef.current);
       autoClickIntervalRef.current = null;
@@ -170,14 +232,11 @@ const GameScreen: React.FC<GameScreenProps> = ({
         "Démarrage de l'intervalle d'auto-clics avec un taux de",
         autoClickRate
       );
-      // Créer un nouvel intervalle qui génère des clics pour l'ÉQUIPE seulement
       autoClickIntervalRef.current = setInterval(() => {
-        // Mise à jour Firestore pour l'équipe
         updateFirestoreClicks(true);
-      }, 1000); // Un cycle par seconde
+      }, 1000);
     }
 
-    // Nettoyage à la démontage
     return () => {
       if (autoClickIntervalRef.current) {
         clearInterval(autoClickIntervalRef.current);
@@ -190,30 +249,45 @@ const GameScreen: React.FC<GameScreenProps> = ({
   const updateFirestoreClicks = useCallback(
     async (isAutoClick: boolean = false) => {
       try {
-        // Mise à jour du document dans Firestore
-        // Si c'est un auto-clic, utilisez le taux d'auto-clics comme valeur d'incrément
-        const incrementValue = isAutoClick ? autoClickRate : 1;
+        // Récupérer le nom d'utilisateur
+        const username = await AsyncStorage.getItem(STORAGE_KEYS.USERNAME);
 
+        // Si pas de nom d'utilisateur, ne pas continuer
+        if (!username) {
+          console.error("Nom d'utilisateur non trouvé");
+          return;
+        }
+
+        // Si c'est un auto-clic, utilisez le taux d'auto-clics comme valeur d'incrément
+        const baseIncrementValue = isAutoClick ? autoClickRate : 1;
+
+        // Appliquer le multiplicateur de clics
+        const incrementValue = Math.floor(baseIncrementValue * clickMultiplier);
+
+        // Mise à jour des clics de l'équipe
         await updateDoc(doc(db, "teams", team), {
+          clicks: increment(incrementValue),
+        });
+
+        // Mise à jour des clics du joueur
+        await updateDoc(doc(db, "players", username), {
           clicks: increment(incrementValue),
         });
       } catch (error) {
         console.error("Erreur lors de la mise à jour des clics:", error);
       }
     },
-    [team, autoClickRate]
+    [team, autoClickRate, clickMultiplier]
   );
 
   // Gérer le clic manuel
   const handleClick = useCallback(() => {
-    // Vérifier le temps écoulé depuis le dernier clic pour éviter les doubles clics
     const now = Date.now();
     if (now - lastClickTime.current < 100) {
-      return; // Ignorer les clics trop rapprochés
+      return;
     }
     lastClickTime.current = now;
 
-    // Animation du bouton
     scale.value = withSequence(
       withTiming(0.95, {
         duration: 100,
@@ -229,35 +303,85 @@ const GameScreen: React.FC<GameScreenProps> = ({
       })
     );
 
-    // Vibration haptique
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
-    // Calculer le nouveau compte de clics personnels
-    const newClickCount = (isNaN(clickCount) ? 0 : clickCount) + 1;
+    const newClickCount =
+      (isNaN(clickCount) ? 0 : clickCount) + 1 * clickMultiplier;
 
-    // Mettre à jour le compteur et sauvegarder
     setClickCount(newClickCount);
 
-    // Sauvegarde directe dans AsyncStorage pour éviter les pertes
     try {
-      AsyncStorage.setItem(CLICKS_STORAGE_KEY, String(newClickCount));
+      AsyncStorage.setItem(STORAGE_KEYS.CLICKS, String(newClickCount));
     } catch (error) {
       console.error("Erreur lors de la sauvegarde du clic:", error);
     }
 
-    // Mettre à jour Firestore
     updateFirestoreClicks(false);
-  }, [clickCount, scale, setClickCount, updateFirestoreClicks]);
+  }, [
+    clickCount,
+    scale,
+    setClickCount,
+    updateFirestoreClicks,
+    clickMultiplier,
+  ]);
+
+  // Fonction de déconnexion
+  const handleLogout = useCallback(async () => {
+    Alert.alert(
+      "Déconnexion",
+      "Voulez-vous vraiment vous déconnecter et réinitialiser toutes vos données ?",
+      [
+        {
+          text: "Annuler",
+          style: "cancel",
+        },
+        {
+          text: "Déconnecter",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              // Supprimer toutes les clés liées à l'utilisateur
+              await AsyncStorage.multiRemove([
+                STORAGE_KEYS.TEAM,
+                STORAGE_KEYS.CLICKS,
+                STORAGE_KEYS.AUTO_CLICKER,
+                STORAGE_KEYS.BONUSES,
+                STORAGE_KEYS.USERNAME,
+              ]);
+
+              // Réinitialiser l'état local
+              setClickCount(0);
+              setAutoClickerEnabled(false);
+              setAutoClickRate(0);
+              setClickMultiplier(1);
+              setPurchasedBonuses([]);
+
+              // Nettoyer l'intervalle d'auto-clic
+              if (autoClickIntervalRef.current) {
+                clearInterval(autoClickIntervalRef.current);
+                autoClickIntervalRef.current = null;
+              }
+
+              // Appeler la fonction de réinitialisation de l'équipe
+              resetTeam();
+            } catch (error) {
+              console.error("Erreur lors de la déconnexion:", error);
+              Alert.alert(
+                "Erreur",
+                "Une erreur est survenue lors de la déconnexion. Veuillez réessayer."
+              );
+            }
+          },
+        },
+      ]
+    );
+  }, [resetTeam, setClickCount]);
 
   // Calculer le total des clics personnels
   const totalPersonalClicks = isNaN(clickCount) ? 0 : clickCount;
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>
-        Équipe {team === "Rouge" ? "🔴 Rouge" : "🔵 Bleue"}
-      </Text>
-
       <View style={styles.scoreCard}>
         <Text style={styles.subtitle}>
           <Ionicons name="person" size={18} color={colors.textSecondary} />{" "}
@@ -269,10 +393,42 @@ const GameScreen: React.FC<GameScreenProps> = ({
             Auto-clics: +{autoClickRate}/sec pour l'équipe
           </Text>
         )}
+        {clickMultiplier > 1 && (
+          <Text style={styles.subtitle}>
+            <Ionicons name="rocket" size={18} color={colors.warning} />{" "}
+            Multiplicateur de clics: x{clickMultiplier}
+          </Text>
+        )}
         <Text style={styles.subtitle}>
           <Ionicons name="people" size={18} color={colors.textSecondary} />{" "}
           Clics de l'équipe: {totalClicks[team]}
         </Text>
+      </View>
+
+      {/* Nouveau bloc pour afficher l'activité des joueurs */}
+      <View style={styles.playerActivityContainer}>
+        <Text style={styles.sectionHeading}>Activité des joueurs</Text>
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          {playerActivities.map((player, index) => (
+            <View
+              key={player.name}
+              style={[
+                styles.playerActivityCard,
+                {
+                  backgroundColor:
+                    team === "Rouge"
+                      ? colors.redSecondary
+                      : colors.blueSecondary,
+                },
+              ]}
+            >
+              <Text style={styles.playerActivityName}>{player.name}</Text>
+              <Text style={styles.playerActivityClicks}>
+                {player.clicks} clics
+              </Text>
+            </View>
+          ))}
+        </ScrollView>
       </View>
 
       <Animated.View style={animatedButtonStyle}>
@@ -287,12 +443,26 @@ const GameScreen: React.FC<GameScreenProps> = ({
         </TouchableOpacity>
       </Animated.View>
 
-      <TouchableOpacity style={styles.resetButton} onPress={resetTeam}>
-        <Text style={styles.resetButtonText}>
-          <Ionicons name="sync" size={16} color={colors.textPrimary} /> Changer
-          d'équipe
-        </Text>
-      </TouchableOpacity>
+      <View style={styles.buttonContainer}>
+        <TouchableOpacity style={styles.resetButton} onPress={resetTeam}>
+          <Text style={styles.resetButtonText}>
+            <Ionicons name="sync" size={16} color={colors.textPrimary} />{" "}
+            Changer d'équipe
+          </Text>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={[
+            styles.resetButton,
+            { backgroundColor: colors.error, marginLeft: 10 },
+          ]}
+          onPress={handleLogout}
+        >
+          <Text style={styles.resetButtonText}>
+            <Ionicons name="log-out" size={16} color={colors.textPrimary} />{" "}
+            Déconnexion
+          </Text>
+        </TouchableOpacity>
+      </View>
     </View>
   );
 };

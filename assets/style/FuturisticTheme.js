@@ -474,6 +474,22 @@ export const gameScreenStyles = StyleSheet.create({
     ...baseStyles.buttonText,
     fontSize: 16,
   },
+  buttonContainer: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    marginTop: 20,
+  },
+  effectsContainer: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: "center",
+    alignItems: "center",
+    pointerEvents: "none",
+  },
   effectsContainer: {
     position: "absolute",
     top: 0,
@@ -506,6 +522,40 @@ export const gameScreenStyles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "bold",
     marginLeft: 4,
+  },
+  playerActivityContainer: {
+    width: "100%",
+    marginTop: 16,
+    paddingHorizontal: 16,
+  },
+  playerActivityCard: {
+    marginRight: 10,
+    padding: 12,
+    borderRadius: 10,
+    alignItems: "center",
+    backgroundColor: colors.backgroundAccent,
+    minWidth: 100,
+    shadowColor: colors.accent,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  playerActivityName: {
+    color: colors.textPrimary,
+    fontWeight: "bold",
+    marginBottom: 4,
+    fontSize: 14,
+  },
+  playerActivityClicks: {
+    color: colors.textSecondary,
+    fontSize: 12,
+  },
+  sectionHeading: {
+    color: colors.textSecondary,
+    marginBottom: 8,
+    fontSize: 14,
+    fontWeight: "bold",
   },
 });
 
